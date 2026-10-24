@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Account;
 use App\Models\Family;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AccountController extends Controller
 {
@@ -157,26 +158,37 @@ class AccountController extends Controller
             ], 400);
         }
 
-        // Create transfer transaction
-        $transaction = \App\Models\Transaction::create([
-            'family_id' => $fromAccount->family_id,
-            'user_id' => $request->user()->id,
-            'account_id' => $fromAccount->id,
-            'to_account_id' => $toAccount->id,
-            'type' => 'transfer',
-            'amount' => $request->amount,
-            'date' => $request->date ?? now()->toDateString(),
-            'note' => $request->note,
-        ]);
+        DB::beginTransaction();
+        try {
+            // Create transfer transaction
+            $transaction = \App\Models\Transaction::create([
+                'family_id' => $fromAccount->family_id,
+                'user_id' => $request->user()->id,
+                'account_id' => $fromAccount->id,
+                'to_account_id' => $toAccount->id,
+                'type' => 'transfer',
+                'amount' => $request->amount,
+                'date' => $request->date ? \Illuminate\Support\Carbon::parse($request->date)->toDateString() : now()->toDateString(),
+                'note' => $request->note,
+            ]);
 
-        // Update balances
-        $fromAccount->decrement('balance', $request->amount);
-        $toAccount->increment('balance', $request->amount);
+            // Update balances
+            $fromAccount->decrement('balance', $request->amount);
+            $toAccount->increment('balance', $request->amount);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Transfer completed successfully',
-            'data' => $transaction->load(['account', 'toAccount']),
-        ], 201);
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Transfer completed successfully',
+                'data' => $transaction->load(['account', 'toAccount']),
+            ], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to process transfer: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

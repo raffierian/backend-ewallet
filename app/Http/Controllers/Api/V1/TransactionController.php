@@ -20,7 +20,8 @@ class TransactionController extends Controller
             'type' => 'sometimes|in:income,expense,transfer,saving,withdraw_saving',
             'category_id' => 'sometimes|exists:categories,id',
             'account_id' => 'sometimes|exists:accounts,id',
-            'per_page' => 'sometimes|integer|min:1|max:100',
+            'per_page' => 'sometimes|integer|min:1|max:500',
+            'all' => 'sometimes|boolean',
         ]);
 
         $family = Family::findOrFail($request->family_id);
@@ -37,12 +38,12 @@ class TransactionController extends Controller
             ->with(['user', 'account', 'category', 'toAccount']);
 
         // Apply filters
-        if ($request->has('date_from')) {
-            $query->where('date', '>=', $request->date_from);
+        if ($request->filled('date_from')) {
+            $query->where('date', '>=', \Illuminate\Support\Carbon::parse($request->date_from)->toDateString());
         }
 
-        if ($request->has('date_to')) {
-            $query->where('date', '<=', $request->date_to);
+        if ($request->filled('date_to')) {
+            $query->where('date', '<=', \Illuminate\Support\Carbon::parse($request->date_to)->toDateString());
         }
 
         if ($request->has('type')) {
@@ -67,12 +68,40 @@ class TransactionController extends Controller
             });
         }
 
-        $transactions = $query->orderBy('date', 'desc')
-            ->orderBy('created_at', 'desc')
-            ->paginate($request->per_page ?? 20);
+        // Calculate totals across the entire filtered query before pagination
+        $summaryQuery = clone $query;
+        $summarySums = $summaryQuery->select('type', DB::raw('SUM(amount) as total'))
+            ->groupBy('type')
+            ->pluck('total', 'type');
+
+        $totalIncome = (float) ($summarySums['income'] ?? 0);
+        $totalExpense = (float) ($summarySums['expense'] ?? 0);
+        $totalSavingDeposit = (float) ($summarySums['saving'] ?? 0);
+        $totalSavingWithdraw = (float) ($summarySums['withdraw_saving'] ?? 0);
+        $netSaving = $totalSavingDeposit - $totalSavingWithdraw;
+
+        $summary = [
+            'total_income' => $totalIncome,
+            'total_expense' => $totalExpense,
+            'total_saving' => $netSaving,
+            'total_saving_deposit' => $totalSavingDeposit,
+            'total_saving_withdrawal' => $totalSavingWithdraw,
+            'net_cashflow' => $totalIncome - $totalExpense - $netSaving,
+        ];
+
+        if ($request->boolean('all') || $request->paginate === 'false') {
+            $transactions = $query->orderBy('date', 'desc')
+                ->orderBy('created_at', 'desc')
+                ->get();
+        } else {
+            $transactions = $query->orderBy('date', 'desc')
+                ->orderBy('created_at', 'desc')
+                ->paginate($request->per_page ?? 20);
+        }
 
         return response()->json([
             'success' => true,
+            'summary' => $summary,
             'data' => $transactions,
         ]);
     }
@@ -111,7 +140,7 @@ class TransactionController extends Controller
                 'category_id' => $request->category_id,
                 'type' => $request->type,
                 'amount' => $request->amount,
-                'date' => $request->date ?? now()->toDateString(),
+                'date' => $request->date ? \Illuminate\Support\Carbon::parse($request->date)->toDateString() : now()->toDateString(),
                 'note' => $request->note,
                 'to_account_id' => $request->to_account_id,
             ];
@@ -224,6 +253,10 @@ class TransactionController extends Controller
             // Update transaction
             $data = $request->only(['amount', 'type', 'account_id', 'to_account_id', 'date', 'category_id', 'note']);
             
+            if (isset($data['date'])) {
+                $data['date'] = \Illuminate\Support\Carbon::parse($data['date'])->toDateString();
+            }
+
             if ($request->hasFile('receipt')) {
                 $path = $request->file('receipt')->store('receipts', 'public');
                 $data['receipt_url'] = $path;

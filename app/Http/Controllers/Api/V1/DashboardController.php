@@ -15,6 +15,8 @@ class DashboardController extends Controller
         $request->validate([
             'family_id' => 'required|exists:families,id',
             'period' => 'sometimes|in:today,week,month,year',
+            'date_from' => 'sometimes|date',
+            'date_to' => 'sometimes|date|after_or_equal:date_from',
         ]);
 
         $family = Family::findOrFail($request->family_id);
@@ -28,7 +30,7 @@ class DashboardController extends Controller
         }
 
         $period = $request->period ?? 'month';
-        [$dateFrom, $dateTo] = $this->getDateRange($period);
+        [$dateFrom, $dateTo] = $this->getDateRange($period, $request->date_from, $request->date_to);
 
         // Total balance across all active accounts
         $totalBalance = (float) $family->accounts()
@@ -98,8 +100,11 @@ class DashboardController extends Controller
             ->get();
 
         // Daily trend for the last 7 days
+        $sevenDaysAgo = now()->subDays(6)->toDateString();
+        $today = now()->toDateString();
+
         $dailyTrend = Transaction::where('family_id', $family->id)
-            ->whereBetween('date', [now()->subDays(6)->startOfDay(), now()->endOfDay()])
+            ->whereBetween('date', [$sevenDaysAgo, $today])
             ->select(
                 'date',
                 'type',
@@ -108,10 +113,14 @@ class DashboardController extends Controller
             ->groupBy('date', 'type')
             ->orderBy('date')
             ->get()
-            ->groupBy('date')
+            ->groupBy(function ($item) {
+                return $item->date instanceof \Carbon\CarbonInterface
+                    ? $item->date->format('Y-m-d')
+                    : (string) $item->date;
+            })
             ->map(function ($transactions, $date) {
                 return [
-                    'date' => $date,
+                    'date' => (string) $date,
                     'income' => (float) $transactions->where('type', 'income')->sum('total'),
                     'expense' => (float) $transactions->where('type', 'expense')->sum('total'),
                     'saving' => (float) ($transactions->where('type', 'saving')->sum('total') - $transactions->where('type', 'withdraw_saving')->sum('total')),
@@ -140,6 +149,9 @@ class DashboardController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
+                'period' => $period,
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
                 'total_balance' => $totalBalance,
                 'total_savings' => $totalSavings,
                 'net_worth' => $totalBalance + $totalSavings,
@@ -158,14 +170,21 @@ class DashboardController extends Controller
         ]);
     }
 
-    private function getDateRange($period): array
+    private function getDateRange(string $period, ?string $customFrom = null, ?string $customTo = null): array
     {
+        if ($customFrom && $customTo) {
+            return [
+                \Illuminate\Support\Carbon::parse($customFrom)->toDateString(),
+                \Illuminate\Support\Carbon::parse($customTo)->toDateString(),
+            ];
+        }
+
         return match($period) {
-            'today' => [now()->startOfDay(), now()->endOfDay()],
-            'week' => [now()->startOfWeek(), now()->endOfWeek()],
-            'month' => [now()->startOfMonth(), now()->endOfMonth()],
-            'year' => [now()->startOfYear(), now()->endOfYear()],
-            default => [now()->startOfMonth(), now()->endOfMonth()],
+            'today' => [now()->toDateString(), now()->toDateString()],
+            'week' => [now()->startOfWeek()->toDateString(), now()->endOfWeek()->toDateString()],
+            'month' => [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()],
+            'year' => [now()->startOfYear()->toDateString(), now()->endOfYear()->toDateString()],
+            default => [now()->startOfMonth()->toDateString(), now()->endOfMonth()->toDateString()],
         };
     }
 }
