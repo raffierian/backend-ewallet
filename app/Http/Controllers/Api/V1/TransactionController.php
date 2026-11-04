@@ -21,7 +21,7 @@ class TransactionController extends Controller
             'category_id' => 'sometimes|exists:categories,id',
             'account_id' => 'sometimes|exists:accounts,id',
             'per_page' => 'sometimes|integer|min:1|max:500',
-            'all' => 'sometimes|boolean',
+            'all' => 'sometimes',
         ]);
 
         $family = Family::findOrFail($request->family_id);
