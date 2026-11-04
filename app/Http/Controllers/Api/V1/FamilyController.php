@@ -60,12 +60,14 @@ class FamilyController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'currency' => 'sometimes|string|size:3',
+            'financial_start_day' => 'sometimes|integer|min:1|max:28',
         ]);
 
         $family = Family::create([
             'owner_user_id' => $request->user()->id,
             'name' => $request->name,
             'currency' => $request->currency ?? 'IDR',
+            'financial_start_day' => $request->financial_start_day ?? 20,
         ]);
 
         // Add owner as member
@@ -110,9 +112,10 @@ class FamilyController extends Controller
         $request->validate([
             'name' => 'sometimes|string|max:255',
             'currency' => 'sometimes|string|size:3',
+            'financial_start_day' => 'sometimes|integer|min:1|max:28',
         ]);
 
-        $family->update($request->only(['name', 'currency']));
+        $family->update($request->only(['name', 'currency', 'financial_start_day']));
 
         return response()->json([
             'success' => true,

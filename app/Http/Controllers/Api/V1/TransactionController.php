@@ -34,33 +34,28 @@ class TransactionController extends Controller
             ], 403);
         }
 
-        $query = Transaction::where('family_id', $request->family_id)
-            ->with(['user', 'account', 'category', 'toAccount']);
+        $baseQuery = Transaction::where('family_id', $request->family_id);
 
         // Apply filters
         if ($request->filled('date_from')) {
-            $query->where('date', '>=', \Illuminate\Support\Carbon::parse($request->date_from)->toDateString());
+            $baseQuery->where('date', '>=', \Illuminate\Support\Carbon::parse($request->date_from)->toDateString());
         }
 
         if ($request->filled('date_to')) {
-            $query->where('date', '<=', \Illuminate\Support\Carbon::parse($request->date_to)->toDateString());
-        }
-
-        if ($request->has('type')) {
-            $query->where('type', $request->type);
+            $baseQuery->where('date', '<=', \Illuminate\Support\Carbon::parse($request->date_to)->toDateString());
         }
 
         if ($request->has('category_id')) {
-            $query->where('category_id', $request->category_id);
+            $baseQuery->where('category_id', $request->category_id);
         }
 
         if ($request->has('account_id')) {
-            $query->where('account_id', $request->account_id);
+            $baseQuery->where('account_id', $request->account_id);
         }
 
         if ($request->has('search') && $request->search != '') {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $baseQuery->where(function($q) use ($search) {
                 $q->where('note', 'like', "%{$search}%")
                   ->orWhereHas('category', function($q) use ($search) {
                       $q->where('name', 'like', "%{$search}%");
@@ -68,9 +63,8 @@ class TransactionController extends Controller
             });
         }
 
-        // Calculate totals across the entire filtered query before pagination
-        $summaryQuery = clone $query;
-        $summarySums = $summaryQuery->select('type', DB::raw('SUM(amount) as total'))
+        // Calculate totals across all types in this filtered period
+        $summarySums = (clone $baseQuery)->select('type', DB::raw('SUM(amount) as total'))
             ->groupBy('type')
             ->pluck('total', 'type');
 
@@ -88,6 +82,13 @@ class TransactionController extends Controller
             'total_saving_withdrawal' => $totalSavingWithdraw,
             'net_cashflow' => $totalIncome - $totalExpense - $netSaving,
         ];
+
+        // Now prepare transaction list query with relations and optional type filter
+        $query = (clone $baseQuery)->with(['user', 'account', 'category', 'toAccount']);
+
+        if ($request->has('type')) {
+            $query->where('type', $request->type);
+        }
 
         if ($request->boolean('all') || $request->paginate === 'false') {
             $transactions = $query->orderBy('date', 'desc')

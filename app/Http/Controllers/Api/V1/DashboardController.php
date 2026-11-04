@@ -17,6 +17,7 @@ class DashboardController extends Controller
             'period' => 'sometimes|in:today,week,month,year',
             'date_from' => 'sometimes|date',
             'date_to' => 'sometimes|date|after_or_equal:date_from',
+            'start_day' => 'sometimes|integer|min:1|max:28',
         ]);
 
         $family = Family::findOrFail($request->family_id);
@@ -30,7 +31,7 @@ class DashboardController extends Controller
         }
 
         $period = $request->period ?? 'month';
-        [$dateFrom, $dateTo] = $this->getDateRange($period, $request->date_from, $request->date_to);
+        [$dateFrom, $dateTo] = $this->getDateRange($period, $request->date_from, $request->date_to, $family, $request->start_day);
 
         // Total balance across all active accounts
         $totalBalance = (float) $family->accounts()
@@ -152,6 +153,7 @@ class DashboardController extends Controller
                 'period' => $period,
                 'date_from' => $dateFrom,
                 'date_to' => $dateTo,
+                'financial_start_day' => (int) ($family->financial_start_day ?? 20),
                 'total_balance' => $totalBalance,
                 'total_savings' => $totalSavings,
                 'net_worth' => $totalBalance + $totalSavings,
@@ -170,13 +172,28 @@ class DashboardController extends Controller
         ]);
     }
 
-    private function getDateRange(string $period, ?string $customFrom = null, ?string $customTo = null): array
+    private function getDateRange(string $period, ?string $customFrom = null, ?string $customTo = null, ?Family $family = null, ?int $customStartDay = null): array
     {
         if ($customFrom && $customTo) {
             return [
                 \Illuminate\Support\Carbon::parse($customFrom)->toDateString(),
                 \Illuminate\Support\Carbon::parse($customTo)->toDateString(),
             ];
+        }
+
+        $startDay = $customStartDay ?? ($family ? ($family->financial_start_day ?? 20) : 20);
+
+        if ($period === 'month' && $startDay > 1) {
+            $clampedDay = min($startDay, 28);
+            $now = now();
+            if ($now->day >= $clampedDay) {
+                $from = $now->copy()->day($clampedDay)->toDateString();
+                $to = $now->copy()->addMonthNoOverflow()->day($clampedDay)->subDay()->toDateString();
+            } else {
+                $from = $now->copy()->subMonthNoOverflow()->day($clampedDay)->toDateString();
+                $to = $now->copy()->day($clampedDay)->subDay()->toDateString();
+            }
+            return [$from, $to];
         }
 
         return match($period) {

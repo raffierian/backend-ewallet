@@ -16,6 +16,11 @@ class Family extends Model
         'owner_user_id',
         'name',
         'currency',
+        'financial_start_day',
+    ];
+
+    protected $casts = [
+        'financial_start_day' => 'integer',
     ];
 
     public function owner(): BelongsTo
