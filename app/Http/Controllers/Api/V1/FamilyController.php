@@ -67,7 +67,7 @@ class FamilyController extends Controller
             'owner_user_id' => $request->user()->id,
             'name' => $request->name,
             'currency' => $request->currency ?? 'IDR',
-            'financial_start_day' => $request->financial_start_day ?? 20,
+            'financial_start_day' => $request->financial_start_day ?? 1,
         ]);
 
         // Add owner as member

@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('families', function (Blueprint $table) {
-            $table->unsignedTinyInteger('financial_start_day')->default(20)->after('currency');
+            $table->unsignedTinyInteger('financial_start_day')->default(1)->after('currency');
         });
     }
 

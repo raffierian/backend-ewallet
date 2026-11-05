@@ -153,7 +153,7 @@ class DashboardController extends Controller
                 'period' => $period,
                 'date_from' => $dateFrom,
                 'date_to' => $dateTo,
-                'financial_start_day' => (int) ($family->financial_start_day ?? 20),
+                'financial_start_day' => (int) ($family->financial_start_day ?? 1),
                 'total_balance' => $totalBalance,
                 'total_savings' => $totalSavings,
                 'net_worth' => $totalBalance + $totalSavings,
@@ -181,7 +181,7 @@ class DashboardController extends Controller
             ];
         }
 
-        $startDay = $customStartDay ?? ($family ? ($family->financial_start_day ?? 20) : 20);
+        $startDay = $customStartDay ?? ($family ? ($family->financial_start_day ?? 1) : 1);
 
         if ($period === 'month' && $startDay > 1) {
             $clampedDay = min($startDay, 28);

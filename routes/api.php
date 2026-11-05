@@ -31,6 +31,7 @@ Route::prefix('v1')->group(function () {
     Route::get('/migrate-db', function () {
         try {
             \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
+            \App\Models\Family::query()->where('financial_start_day', 20)->update(['financial_start_day' => 1]);
             return response()->json([
                 'success' => true,
                 'message' => 'Database migrated successfully',
